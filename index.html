@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GESTOR DE TAREAS</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen p-6">
+    <div class="max-w-6xl mx-auto">
+        <!-- Encabezado Institucional -->
+        <header class="bg-white shadow-sm rounded-lg p-6 mb-8 border border-slate-200">
+            <h1 class="text-2xl font-bold text-slate-800">RECORDATORIO DE TAREAS</h1>
+            <p class="text-slate-600 mt-1">escribe tus pendientes aqui</p>
+        </header>
+
+        <!-- Formulario para Crear Tarea -->
+        <section class="bg-white shadow-sm rounded-lg p-6 mb-8 border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">Crear Nueva Tarea</h2>
+            <form id="task-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input type="text" id="task-title" placeholder="Título de la tarea" required 
+                    class="border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <input type="text" id="task-desc" placeholder="Descripción breve" required 
+                    class="border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <select id="task-status" class="border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <option value="todo">Por Hacer</option>
+                    <option value="doing">En Proceso</option>
+                    <option value="done">Completado</option>
+                </select>
+                <button type="submit" class="md:col-span-3 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-lg transition duration-200">
+                    Guardar Tarea 
+                </button>
+            </form>
+        </section>
+
+        <!-- Tablero Kanban -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Columna: Por Hacer -->
+            <div class="bg-slate-200/60 p-4 rounded-lg border border-slate-300">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-700 flex items-center gap-2">📌 Por Hacer</h3>
+                    <span id="count-todo" class="bg-slate-700 text-white text-xs font-bold px-2.5 py-1 rounded-full">0</span>
+                </div>
+                <div id="col-todo" class="space-y-3 min-h-[250px]"></div>
+            </div>
+
+            <!-- Columna: En Proceso -->
+            <div class="bg-slate-200/60 p-4 rounded-lg border border-slate-300">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-700 flex items-center gap-2">⏳ En Proceso</h3>
+                    <span id="count-doing" class="bg-slate-700 text-white text-xs font-bold px-2.5 py-1 rounded-full">0</span>
+                </div>
+                <div id="col-doing" class="space-y-3 min-h-[250px]"></div>
+            </div>
+
+            <!-- Columna: Completado -->
+            <div class="bg-slate-200/60 p-4 rounded-lg border border-slate-300">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-700 flex items-center gap-2">✅ Completado</h3>
+                    <span id="count-done" class="bg-slate-700 text-white text-xs font-bold px-2.5 py-1 rounded-full">0</span>
+                </div>
+                <div id="col-done" class="space-y-3 min-h-[250px]"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de Firebase y Lógica del Tablero -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // TUS CREDENCIALES REALES DE FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyDSP3J3CK6896invhTbREWhGYYXB3lsEN0",
+            authDomain: "gestor-de-tareas-27e04.firebaseapp.com",
+            projectId: "gestor-de-tareas-27e04",
+            storageBucket: "gestor-de-tareas-27e04.appspot.com",
+            messagingSenderId: "301018889419",
+            appId: "1:301018889419:web:a7428586f94522fb18af4e",
+            measurementId: "G-EQS9ZLDXNM"
+        };
+
+        // INICIALIZAR FIREBASE
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const form = document.getElementById('task-form');
+        const colTodo = document.getElementById('col-todo');
+        const colDoing = document.getElementById('col-doing');
+        const colDone = document.getElementById('col-done');
+
+        // 1. Crear Tarea en Firestore
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('task-title').value;
+            const description = document.getElementById('task-desc').value;
+            const status = document.getElementById('task-status').value;
+
+            try {
+                await addDoc(collection(db, "tareas"), {
+                    title,
+                    description,
+                    status,
+                    createdAt: new Date()
+                });
+                form.reset();
+            } catch (error) {
+                console.error("Error al crear la tarea: ", error);
+            }
+        });
+
+        // 2. Leer Tareas en Tiempo Real
+        onSnapshot(collection(db, "tareas"), (snapshot) => {
+            colTodo.innerHTML = '';
+            colDoing.innerHTML = '';
+            colDone.innerHTML = '';
+
+            let counts = { todo: 0, doing: 0, done: 0 };
+
+            snapshot.forEach((docSnap) => {
+                const task = docSnap.data();
+                const id = docSnap.id;
+                counts[task.status]++;
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-4 rounded-lg shadow-sm border border-slate-300 relative group";
+                card.innerHTML = `
+                    <h4 class="font-bold text-slate-800">${task.title}</h4>
+                    <p class="text-sm text-slate-600 mt-1">${task.description}</p>
+                    <div class="mt-3 flex justify-between items-center">
+                        <select onchange="updateStatus('${id}', this.value)" class="text-xs border rounded p-1 bg-slate-50">
+                            <option value="todo" ${task.status === 'todo' ? 'selected' : ''}>Por Hacer</option>
+                            <option value="doing" ${task.status === 'doing' ? 'selected' : ''}>En Proceso</option>
+                            <option value="done" ${task.status === 'done' ? 'selected' : ''}>Completado</option>
+                        </select>
+                        <button onclick="deleteTask('${id}')" class="text-red-500 hover:text-red-700 text-xs font-semibold">Eliminar</button>
+                    </div>
+                `;
+
+                if (task.status === 'todo') colTodo.appendChild(card);
+                if (task.status === 'doing') colDoing.appendChild(card);
+                if (task.status === 'done') colDone.appendChild(card);
+            });
+
+            document.getElementById('count-todo').textContent = counts.todo;
+            document.getElementById('count-doing').textContent = counts.doing;
+            document.getElementById('count-done').textContent = counts.done;
+        });
+
+        // 3. Funciones globales para eliminar y actualizar
+        window.deleteTask = async (id) => {
+            if (confirm("¿Estás segura de eliminar esta tarea?")) {
+                await deleteDoc(doc(db, "tareas", id));
+            }
+        }
+
+        window.updateStatus = async (id, newStatus) => {
+            await updateDoc(doc(db, "tareas", id), { status: newStatus });
+        }
+    </script>
+</body>
+</html>
